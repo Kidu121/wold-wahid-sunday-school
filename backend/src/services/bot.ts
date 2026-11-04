@@ -254,9 +254,10 @@ export async function findUserRegistrationOrStudent(telegramId: number, username
     console.warn('Notice querying students collection:', e);
   }
 
-  // 2. Search in registrations collection
+  // 2. Search in registrations collection and prioritize newest / pending / approved
   try {
     const snap = await db.collection('registrations').get();
+    const matching: any[] = [];
     for (const d of snap.docs) {
       const data = d.data();
       if (
@@ -265,8 +266,23 @@ export async function findUserRegistrationOrStudent(telegramId: number, username
         String(data.tgId) === tgStr ||
         (username && data.telegramUsername && String(data.telegramUsername).toLowerCase() === username.toLowerCase())
       ) {
-        return { type: 'registration', data };
+        matching.push(data);
       }
+    }
+
+    if (matching.length > 0) {
+      matching.sort((a, b) => {
+        const statusWeight: Record<string, number> = { approved: 3, active: 3, pending: 2, pending_approval: 2, rejected: 1 };
+        const weightA = statusWeight[a.status] || 0;
+        const weightB = statusWeight[b.status] || 0;
+        if (weightA !== weightB) return weightB - weightA;
+
+        const timeA = new Date(a.submittedAt || a.submitted_at || 0).getTime();
+        const timeB = new Date(b.submittedAt || b.submitted_at || 0).getTime();
+        return timeB - timeA;
+      });
+
+      return { type: 'registration', data: matching[0] };
     }
   } catch (e) {
     console.warn('Notice querying registrations collection:', e);
@@ -298,12 +314,28 @@ export async function findStudentOrRegistrationByPhone(phoneInput: string): Prom
   // Search registrations
   try {
     const snap = await db.collection('registrations').get();
+    const matching: any[] = [];
     for (const d of snap.docs) {
       const data = d.data();
       const pDigits = String(data.phone || '').replace(/\D/g, '').slice(-9);
       if (pDigits === digits9) {
-        return { type: 'registration', data };
+        matching.push(data);
       }
+    }
+
+    if (matching.length > 0) {
+      matching.sort((a, b) => {
+        const statusWeight: Record<string, number> = { approved: 3, active: 3, pending: 2, pending_approval: 2, rejected: 1 };
+        const weightA = statusWeight[a.status] || 0;
+        const weightB = statusWeight[b.status] || 0;
+        if (weightA !== weightB) return weightB - weightA;
+
+        const timeA = new Date(a.submittedAt || a.submitted_at || 0).getTime();
+        const timeB = new Date(b.submittedAt || b.submitted_at || 0).getTime();
+        return timeB - timeA;
+      });
+
+      return { type: 'registration', data: matching[0] };
     }
   } catch (e) {
     console.warn('Notice searching registration by phone:', e);
