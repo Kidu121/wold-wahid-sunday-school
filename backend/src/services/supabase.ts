@@ -327,6 +327,7 @@ export class CollectionQuery {
     // 1. Load local documents first
     const colLocal = getCollectionLocal(this.colName);
     Object.entries(colLocal).forEach(([docId, docData]) => {
+      if (docData?.status === 'deleted' || docData?.data?.status === 'deleted') return;
       docsMap.set(docId, normalizeDoc(docId, docData));
     });
 
@@ -358,6 +359,7 @@ export class CollectionQuery {
         const { data, error } = await query;
         if (!error && data) {
           data.forEach((row: any) => {
+            if (row.status === 'deleted' || row.data?.status === 'deleted') return;
             const id = String(row.id || row._id || `row_${Math.random()}`);
             const norm = normalizeDoc(id, row);
             docsMap.set(id, norm);
@@ -370,6 +372,7 @@ export class CollectionQuery {
           const { data: allData } = await supabaseClient.from(this.colName).select('*').limit(100);
           if (allData) {
             allData.forEach((row: any) => {
+              if (row.status === 'deleted' || row.data?.status === 'deleted') return;
               const id = String(row.id || row._id || `row_${Math.random()}`);
               const norm = normalizeDoc(id, row);
               docsMap.set(id, norm);
@@ -557,6 +560,10 @@ export class CollectionQuery {
 
         if (supabaseClient) {
           try {
+            await supabaseClient.from(colName).update({
+              status: 'deleted',
+              data: { status: 'deleted', deletedAt: new Date().toISOString() }
+            }).eq('id', id);
             await supabaseClient.from(colName).delete().eq('id', id);
           } catch (err: any) {
             console.warn(`Supabase delete notice for ${colName}/${id}:`, err?.message || err);

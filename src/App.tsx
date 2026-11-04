@@ -119,42 +119,44 @@ export default function App() {
     const unsubReg = onSnapshot(
       query(collection(db, 'registrations'), limit(200)),
       (snap) => {
-        const regList: Member[] = snap.docs.map((docSnap: any) => {
-          const d = docSnap.data();
-          const isApproved = d.status === 'approved' || Boolean(d.studentCode);
-          return {
-            id: docSnap.id,
-            code: d.studentCode || d.code || `PENDING-${d.telegramId ? String(d.telegramId).slice(-4) : docSnap.id.slice(0, 4)}`,
-            fullNameAm: d.fullNameAm || d.fullNameEn || 'ያልተገለጸ ስም',
-            fullNameEn: d.fullNameEn || d.fullNameAm || 'Unnamed Student',
-            phone: d.phone || '',
-            gender: d.gender === 'female' ? 'female' : 'male',
-            department: d.department || 'education',
-            gradeLevel: d.gradeLevel || 'general',
-            roleAm: 'ተማሪ / Student',
-            roleEn: 'Student',
-            christianName: d.christianName || '',
-            birthYear: d.birthYear || d.birthDate || '',
-            photoUrl: getPhotoUrl(d.photoUrl, d.gender === 'female' ? 'female' : 'male'),
-            registeredDate: d.submittedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
-            bloodGroup: d.bloodGroup || 'O+',
-            emergencyContact: d.emergencyContact || { 
-              name: d.emergencyName || '', 
-              phone: d.emergencyPhone || '', 
-              relation: d.emergencyRelation || 'ቤተሰብ / Family' 
-            },
-            subcity: d.subcity || d.address || '',
-            status: isApproved ? 'active' : d.status === 'rejected' ? 'rejected' : 'pending_approval',
-            telegramId: d.telegramId || '',
-            telegramUsername: d.telegramUsername || '',
-            approvedBy: d.approvedBy,
-            approvedAt: d.approvedAt,
-            rejectedBy: d.rejectedBy,
-            rejectedAt: d.rejectedAt,
-            rejectionReason: d.rejectionReason,
-            consecutiveAbsences: 0,
-          };
-        });
+        const regList: Member[] = snap.docs
+          .filter((docSnap: any) => docSnap.data()?.status !== 'deleted')
+          .map((docSnap: any) => {
+            const d = docSnap.data();
+            const isApproved = d.status === 'approved' || Boolean(d.studentCode);
+            return {
+              id: docSnap.id,
+              code: d.studentCode || d.code || `PENDING-${d.telegramId ? String(d.telegramId).slice(-4) : docSnap.id.slice(0, 4)}`,
+              fullNameAm: d.fullNameAm || d.fullNameEn || 'ያልተገለጸ ስም',
+              fullNameEn: d.fullNameEn || d.fullNameAm || 'Unnamed Student',
+              phone: d.phone || '',
+              gender: d.gender === 'female' ? 'female' : 'male',
+              department: d.department || 'education',
+              gradeLevel: d.gradeLevel || 'general',
+              roleAm: 'ተማሪ / Student',
+              roleEn: 'Student',
+              christianName: d.christianName || '',
+              birthYear: d.birthYear || d.birthDate || '',
+              photoUrl: getPhotoUrl(d.photoUrl, d.gender === 'female' ? 'female' : 'male'),
+              registeredDate: d.submittedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+              bloodGroup: d.bloodGroup || 'O+',
+              emergencyContact: d.emergencyContact || { 
+                name: d.emergencyName || '', 
+                phone: d.emergencyPhone || '', 
+                relation: d.emergencyRelation || 'ቤተሰብ / Family' 
+              },
+              subcity: d.subcity || d.address || '',
+              status: isApproved ? 'active' : d.status === 'rejected' ? 'rejected' : 'pending_approval',
+              telegramId: d.telegramId || '',
+              telegramUsername: d.telegramUsername || '',
+              approvedBy: d.approvedBy,
+              approvedAt: d.approvedAt,
+              rejectedBy: d.rejectedBy,
+              rejectedAt: d.rejectedAt,
+              rejectionReason: d.rejectionReason,
+              consecutiveAbsences: 0,
+            };
+          });
         setRegistrations(regList);
         try { localStorage.setItem('ww_registrations_cache', JSON.stringify(regList)); } catch {}
       },
@@ -163,7 +165,9 @@ export default function App() {
 
     // 2. Listen to real-time approved students (Limited to 500)
     const unsubStudents = onSnapshot(query(collection(db, 'students'), limit(500)), (snap) => {
-      const studentList: Member[] = snap.docs.map((docSnap: any) => {
+      const studentList: Member[] = snap.docs
+        .filter((docSnap: any) => docSnap.data()?.status !== 'deleted')
+        .map((docSnap: any) => {
         const d = docSnap.data();
         const isPending = d.status === 'pending_approval' || d.status === 'pending';
         return {

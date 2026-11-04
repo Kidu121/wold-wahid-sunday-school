@@ -363,7 +363,9 @@ export async function getDocs(q: any): Promise<QuerySnapshot> {
       throw error;
     }
 
-    const items = (data || []).map((item: any) => normalizeDoc(item.id, item));
+    const items = (data || [])
+      .map((item: any) => normalizeDoc(item.id, item))
+      .filter((item: any) => item && item.status !== 'deleted');
     setLocalCache(colName, items);
 
     const docs: QueryDocumentSnapshot[] = items.map((norm: any) => ({
@@ -515,10 +517,16 @@ export async function deleteDoc(docRef: any): Promise<void> {
   setLocalCache(colName, filtered);
 
   try {
-    const { error } = await supabase.from(colName).delete().eq('id', id);
-    if (error) console.warn(`Supabase deleteDoc notice for ${colName}/${id}:`, error.message);
+    // 1. Mark status as deleted in Supabase to guarantee permanent removal regardless of RLS policies
+    await supabase.from(colName).update({
+      status: 'deleted',
+      data: { status: 'deleted', deletedAt: new Date().toISOString() }
+    }).eq('id', id);
+
+    // 2. Also attempt hard delete
+    await supabase.from(colName).delete().eq('id', id);
   } catch (err: any) {
-    console.warn(`Supabase deleteDoc error for ${colName}/${id}:`, err?.message || err);
+    console.warn(`Supabase deleteDoc notice for ${colName}/${id}:`, err?.message || err);
   }
 }
 

@@ -260,6 +260,7 @@ export async function findUserRegistrationOrStudent(telegramId: number, username
     const matching: any[] = [];
     for (const d of snap.docs) {
       const data = d.data();
+      if (!data || data.status === 'deleted') continue;
       if (
         String(data.telegramId) === tgStr ||
         String(data.telegram_id) === tgStr ||
@@ -563,6 +564,15 @@ export async function handleTelegramUpdate(update: any) {
         session.data.photo = photoVal;
 
         try {
+          // Clean up any previous registration for this user so only the new submission remains
+          const prevDocs = await db.collection('registrations').get();
+          for (const pd of prevDocs.docs) {
+            const pData = pd.data();
+            if (String(pData.telegramId) === String(telegramId) || String(pData.telegram_id) === String(telegramId)) {
+              await db.collection('registrations').doc(pd.id).delete().catch(() => {});
+            }
+          }
+
           await db.collection('registrations').add({
             fullNameAm: session.data.name,
             fullNameEn: session.data.name,
@@ -822,7 +832,7 @@ export async function handleTelegramUpdate(update: any) {
       }
 
       const match = await findUserRegistrationOrStudent(telegramId, username);
-      if (!match) {
+      if (!match || match.data?.status === 'deleted') {
         await dispatchSendMessage(
           chatId,
           '📋 *የምዝገባ ሁኔታ / Registration Status*\n' +
