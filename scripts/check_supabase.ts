@@ -1,0 +1,18 @@
+import { createClient } from '@supabase/supabase-js';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
+
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://heiujpytsdeiggxwwbzt.supabase.co';
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlaXVqcHl0c2RlaWdneHd3Ynp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM2MDM1NTcsImV4cCI6MjEwOTE3OTU1N30.uP0K_OxEycQ5WGh9tvZHxTzPag6lureTrB7a58_rA7g';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+async function check() {
+  const { data, count } = await supabase.from('students').select('*', { count: 'exact' });
+  console.log(`\n📊 Supabase 'students' table count: ${count}`);
+  if (data && data.length > 0) {
+    console.log('Sample student:', data[0].fullNameAm || data[0].fullNameEn);
+  }
+}
+
+check().catch(console.error);
