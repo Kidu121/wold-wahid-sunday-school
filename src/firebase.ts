@@ -539,7 +539,7 @@ export function onSnapshot(refOrQuery: any, callback: (snapshot: any) => void, _
         callback(querySnap);
       }
     } catch {}
-  }, 10000);
+  }, 3000);
 
   return () => clearInterval(interval);
 }
