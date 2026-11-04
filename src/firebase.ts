@@ -46,7 +46,8 @@ export interface QuerySnapshot {
   docChanges: () => { type: string; doc: QueryDocumentSnapshot }[];
 }
 
-export function mapFieldToColumn(field: string): string {
+export function mapFieldToColumn(field?: string): string {
+  if (!field) return '';
   const map: Record<string, string> = {
     telegramId: 'telegram_id',
     telegram_id: 'telegram_id',
@@ -321,8 +322,8 @@ export async function getDocs(q: any): Promise<QuerySnapshot> {
     let queryBuilder = supabase.from(colName).select('*');
 
     for (const c of constraints) {
-      const colKey = mapFieldToColumn(c.field);
       if (c.type === 'where') {
+        const colKey = mapFieldToColumn(c.field);
         if (c.op === '==' || c.op === '=') {
           queryBuilder = queryBuilder.eq(colKey, c.value);
         } else if (c.op === 'in') {
@@ -333,6 +334,7 @@ export async function getDocs(q: any): Promise<QuerySnapshot> {
           queryBuilder = queryBuilder.lte(colKey, c.value);
         }
       } else if (c.type === 'orderBy') {
+        const colKey = mapFieldToColumn(c.field);
         queryBuilder = queryBuilder.order(colKey, { ascending: c.direction === 'asc' });
       } else if (c.type === 'limit') {
         queryBuilder = queryBuilder.limit(c.n);

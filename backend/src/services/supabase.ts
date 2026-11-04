@@ -49,7 +49,8 @@ function getCollectionLocal(colName: string): Record<string, any> {
   return localStore[colName];
 }
 
-export function mapFieldToColumn(field: string): string {
+export function mapFieldToColumn(field?: string): string {
+  if (!field) return '';
   const map: Record<string, string> = {
     telegramId: 'telegram_id',
     telegram_id: 'telegram_id',
@@ -335,8 +336,8 @@ export class CollectionQuery {
         let query = supabaseClient.from(this.colName).select('*');
         
         for (const c of this.constraints) {
-          const colKey = mapFieldToColumn(c.field);
           if (c.type === 'where') {
+            const colKey = mapFieldToColumn(c.field);
             if (c.op === '==' || c.op === '=') {
               query = query.eq(colKey, c.val);
             } else if (c.op === 'in') {
@@ -347,6 +348,7 @@ export class CollectionQuery {
               query = query.lte(colKey, c.val);
             }
           } else if (c.type === 'orderBy') {
+            const colKey = mapFieldToColumn(c.field);
             query = query.order(colKey, { ascending: c.dir === 'asc' });
           } else if (c.type === 'limit') {
             query = query.limit(c.n);
