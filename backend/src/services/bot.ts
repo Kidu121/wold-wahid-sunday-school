@@ -767,6 +767,28 @@ export async function handleTelegramUpdate(update: any) {
   // 2. 🔍 MY REGISTRATION STATUS
   if (['🔍 የምዝገባ ሁኔታ', '🔍 My Registration', 'የምዝገባ ሁኔታ', '/status'].includes(text)) {
     try {
+      const activeSession = await getSession(telegramId);
+      if (activeSession && activeSession.action === 'register') {
+        const stepMap: Record<string, string> = {
+          name: '1', christianName: '2', gender: '3', birthDate: '4',
+          phone: '5', address: '6', emergencyName: '7', emergencyPhone: '8',
+          department: '9', photo: '10'
+        };
+        const stepNum = stepMap[activeSession.step] || '1';
+
+        await dispatchSendMessage(
+          chatId,
+          `⏳ *የምዝገባ ሂደትዎ ገና በመጠናቀቅ ላይ ነው (Draft Registration - Step ${stepNum}/10)*\n` +
+          `⛪ መካነ ቅዱሳን ኢያቄም ወሐና ቤተ-ክርስቲያን\n═══════════════════════\n` +
+          `• ሙሉ ስም: ${activeSession.data.name || 'አልገባም'}\n` +
+          `• ስልክ: ${activeSession.data.phone || 'አልገባም'}\n` +
+          `• ክፍል: ${activeSession.data.department || 'አልገባም'}\n\n` +
+          `👉 እባክዎ የቀረውን ቅጽ በመሙላት ምዝገባዎን ይጨርሱ።`,
+          cancelKeyboard
+        );
+        return;
+      }
+
       const match = await findUserRegistrationOrStudent(telegramId, username);
       if (!match) {
         await dispatchSendMessage(
