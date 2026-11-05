@@ -127,30 +127,43 @@ export function mapFieldToColumn(field?: string): string {
   return map[field] || field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
 
+function flattenDoc(row: any): any {
+  if (!row || typeof row !== 'object') return row;
+  let flat = { ...row };
+  while (flat.data && typeof flat.data === 'object') {
+    const inner = flat.data;
+    delete flat.data;
+    flat = { ...inner, ...flat };
+  }
+  return flat;
+}
+
 export function normalizeDoc(id: string, row: any): any {
   if (!row) return null;
-  const rawData = (row.data && typeof row.data === 'object') ? row.data : {};
+  const flatRow = flattenDoc(row);
+  const rawData = (flatRow.data && typeof flatRow.data === 'object') ? flatRow.data : {};
+  const merged = { ...rawData, ...flatRow };
 
-  const telegramId = String(row.telegram_id || row.telegramId || rawData.telegramId || rawData.telegram_id || '');
-  const studentCode = row.student_code || row.studentCode || row.code || rawData.studentCode || rawData.code || '';
-  const phone = row.phone || rawData.phone || '';
-  const fullNameAm = row.full_name_am || row.fullNameAm || row.name_am || row.nameAm || rawData.fullNameAm || rawData.nameAm || '';
-  const fullNameEn = row.full_name_en || row.fullNameEn || row.name_en || row.nameEn || rawData.fullNameEn || rawData.nameEn || '';
-  const christianName = row.christian_name || row.christianName || rawData.christianName || '';
-  const department = row.department || rawData.department || '';
-  const status = row.status || rawData.status || 'pending';
-  const role = row.role || rawData.role || 'student';
-  const password = row.password || rawData.password || '';
-  const permissions = row.permissions || rawData.permissions || null;
-  const gradeLevel = row.grade_level || row.gradeLevel || rawData.gradeLevel || '';
-  const photoUrl = row.photo_url || row.photoUrl || rawData.photoUrl || '';
-  const birthDate = row.birth_year || row.birthDate || row.birthYear || rawData.birthDate || rawData.birthYear || '';
-  const submittedAt = row.submitted_at || row.submittedAt || rawData.submittedAt || '';
-  const address = row.subcity || row.address || rawData.address || rawData.subcity || '';
-  const emergencyContact = row.emergency_contact || rawData.emergencyContact || '';
-  const emergencyName = rawData.emergencyName || (typeof emergencyContact === 'string' ? emergencyContact : emergencyContact?.name) || '';
-  const emergencyPhone = rawData.emergencyPhone || (typeof emergencyContact === 'object' ? emergencyContact?.phone : '') || '';
-  const session = row.session !== undefined ? row.session : (rawData.session || null);
+  const telegramId = String(merged.telegram_id || merged.telegramId || merged.tgId || '');
+  const studentCode = merged.student_code || merged.studentCode || merged.code || '';
+  const phone = merged.phone || '';
+  const fullNameAm = merged.full_name_am || merged.fullNameAm || merged.name_am || merged.nameAm || '';
+  const fullNameEn = merged.full_name_en || merged.fullNameEn || merged.name_en || merged.nameEn || '';
+  const christianName = merged.christian_name || merged.christianName || '';
+  const department = merged.department || '';
+  const status = merged.status || 'pending';
+  const role = merged.role || 'student';
+  const password = merged.password || '';
+  const permissions = merged.permissions || null;
+  const gradeLevel = merged.grade_level || merged.gradeLevel || '';
+  const photoUrl = merged.photo_url || merged.photoUrl || '';
+  const birthDate = merged.birth_year || merged.birthDate || merged.birthYear || '';
+  const submittedAt = merged.submitted_at || merged.submittedAt || '';
+  const address = merged.subcity || merged.address || '';
+  const emergencyContact = merged.emergency_contact || merged.emergencyContact || '';
+  const emergencyName = merged.emergencyName || (typeof emergencyContact === 'string' ? emergencyContact : emergencyContact?.name) || '';
+  const emergencyPhone = merged.emergencyPhone || (typeof emergencyContact === 'object' ? emergencyContact?.phone : '') || '';
+  const session = merged.session !== undefined ? merged.session : null;
 
   return {
     ...rawData,
