@@ -331,6 +331,39 @@ export async function getDocs(q: any): Promise<QuerySnapshot> {
   const colName = q?.name || 'students';
   const constraints = q?.constraints || [];
 
+  // Strategy 1: Try fast server endpoint /api/<colName>
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    const apiRes = await fetch(`/api/${colName}`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (apiRes.ok) {
+      const apiData = await apiRes.json();
+      if (Array.isArray(apiData)) {
+        const items = apiData
+          .map((item: any) => normalizeDoc(item.id, item))
+          .filter((item: any) => item && item.status !== 'deleted');
+        setLocalCache(colName, items);
+
+        const docs: QueryDocumentSnapshot[] = items.map((norm: any) => ({
+          id: norm.id || String(norm.student_id || Math.random()),
+          exists: () => true,
+          data: () => norm,
+        }));
+
+        return {
+          docs,
+          empty: docs.length === 0,
+          size: docs.length,
+          docChanges: () => docs.map((d) => ({ type: 'added', doc: d })),
+        };
+      }
+    }
+  } catch (apiErr) {
+    // Fall through to direct Supabase query
+  }
+
+  // Strategy 2: Direct Supabase client query
   try {
     let queryBuilder = supabase.from(colName).select('*');
 

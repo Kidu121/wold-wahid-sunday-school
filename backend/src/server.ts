@@ -544,6 +544,16 @@ app.get('/api/registrations', async (req, res) => {
   }
 });
 
+// Admin: List all students
+app.get('/api/students', async (req, res) => {
+  try {
+    const snap = await db.collection('students').get();
+    res.json(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch students' });
+  }
+});
+
 // Admin: List all leave requests
 app.get('/api/leave_requests', async (req, res) => {
   try {
