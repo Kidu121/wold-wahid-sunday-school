@@ -549,6 +549,26 @@ export default function App() {
         rejectionReason: rejectionReason,
       });
 
+      // Also ensure all older registrations for this same user are marked rejected so no stale pending registration remains
+      if (targetReg) {
+        const tgId = targetReg.telegramId ? String(targetReg.telegramId) : '';
+        const phone = (targetReg.phone || '').replace(/\D/g, '').slice(-9);
+        registrations.forEach(async (r) => {
+          if (r.id !== memberId) {
+            const rTg = r.telegramId ? String(r.telegramId) : '';
+            const rPhone = (r.phone || '').replace(/\D/g, '').slice(-9);
+            if ((tgId && rTg === tgId) || (phone && rPhone && rPhone === phone)) {
+              await updateDoc(doc(db, 'registrations', r.id), {
+                status: 'rejected',
+                rejectedAt: new Date().toISOString(),
+                rejectedBy: currentAdmin.nameAm || currentAdmin.nameEn || 'አስተዳዳሪ',
+                rejectionReason: rejectionReason,
+              }).catch(() => {});
+            }
+          }
+        });
+      }
+
       // Remove from active students if exists
       await deleteDoc(doc(db, 'students', memberId)).catch(() => {});
 

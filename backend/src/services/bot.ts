@@ -272,14 +272,10 @@ export async function findUserRegistrationOrStudent(telegramId: number, username
     }
 
     if (matching.length > 0) {
+      // Prioritize the latest submitted registration so status accurately reflects recent admin decisions
       matching.sort((a, b) => {
-        const statusWeight: Record<string, number> = { approved: 3, active: 3, pending: 2, pending_approval: 2, rejected: 1 };
-        const weightA = statusWeight[a.status] || 0;
-        const weightB = statusWeight[b.status] || 0;
-        if (weightA !== weightB) return weightB - weightA;
-
-        const timeA = new Date(a.submittedAt || a.submitted_at || 0).getTime();
-        const timeB = new Date(b.submittedAt || b.submitted_at || 0).getTime();
+        const timeA = new Date(a.submittedAt || a.submitted_at || a.createdAt || 0).getTime();
+        const timeB = new Date(b.submittedAt || b.submitted_at || b.createdAt || 0).getTime();
         return timeB - timeA;
       });
 
@@ -392,7 +388,8 @@ export async function handleTelegramUpdate(update: any) {
 
   if (!chatId || !telegramId) return;
 
-  // Save subscriber details silently
+  // Save subscriber details silently without overwriting active session
+  const activeSess = userSessions.get(telegramId);
   db.collection('bot_subscribers').doc(String(telegramId)).set({
     telegramId: String(telegramId),
     chatId: String(chatId),
@@ -400,6 +397,7 @@ export async function handleTelegramUpdate(update: any) {
     firstName: msg.from?.first_name || '',
     lastName: msg.from?.last_name || '',
     lastActiveAt: new Date().toISOString(),
+    ...(activeSess ? { session: activeSess } : {})
   }, { merge: true }).catch(() => {});
 
   // /start command
@@ -775,7 +773,7 @@ export async function handleTelegramUpdate(update: any) {
     const existing = await findUserRegistrationOrStudent(telegramId, username);
     if (existing) {
       const reg = existing.data;
-      if (reg.status === 'pending') {
+      if (reg.status === 'pending' || reg.status === 'pending_approval') {
         await dispatchSendMessage(
           chatId,
           `⚠️ ማመልከቻዎ አስቀድሞ ተመዝግቧል (Submitted: ${reg.submittedAt?.split('T')[0] || 'በቅርቡ'}).\n\nሁኔታውን ለማወቅ "🔍 የምዝገባ ሁኔታ" የሚለውን ይጫኑ።`,

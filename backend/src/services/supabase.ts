@@ -274,7 +274,11 @@ export function buildSupabaseRow(colName: string, id: string, docData: any): Rec
     if (norm.firstName || norm.first_name) base.first_name = norm.firstName || norm.first_name;
     if (norm.lastName || norm.last_name) base.last_name = norm.lastName || norm.last_name;
     if (norm.lastActiveAt || norm.last_active_at) base.last_active_at = norm.lastActiveAt || norm.last_active_at;
-    const sessionVal = docData.session !== undefined ? docData.session : (norm.session || null);
+    const sessionVal = docData.session !== undefined
+      ? docData.session
+      : (docData.data?.session !== undefined
+        ? docData.data.session
+        : (norm.session !== undefined ? norm.session : (norm.data?.session || null)));
     base.data = {
       ...(typeof norm.data === 'object' ? norm.data : {}),
       session: sessionVal,
@@ -505,7 +509,12 @@ export class CollectionQuery {
             }
           } catch {}
         }
-        const merged = options?.merge ? { ...(existing || {}), ...data } : data;
+        let sessionToKeep = data.session !== undefined
+          ? data.session
+          : (existing?.session || existing?.data?.session || null);
+        const merged = options?.merge
+          ? { ...(existing || {}), ...data, ...(sessionToKeep !== undefined ? { session: sessionToKeep } : {}) }
+          : data;
         const norm = normalizeDoc(id, merged);
 
         colLocal[id] = norm;
