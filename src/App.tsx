@@ -123,12 +123,13 @@ export default function App() {
           .filter((docSnap: any) => docSnap.data()?.status !== 'deleted')
           .map((docSnap: any) => {
             const d = docSnap.data();
-            const isApproved = d.status === 'approved' || Boolean(d.studentCode);
+            const isApproved = d.status === 'approved' || d.status === 'active';
+            const isRejected = d.status === 'rejected';
             return {
               id: docSnap.id,
               code: d.studentCode || d.code || `PENDING-${d.telegramId ? String(d.telegramId).slice(-4) : docSnap.id.slice(0, 4)}`,
-              fullNameAm: d.fullNameAm || d.fullNameEn || 'ያልተገለጸ ስም',
-              fullNameEn: d.fullNameEn || d.fullNameAm || 'Unnamed Student',
+              fullNameAm: d.fullNameAm || d.fullNameEn || d.nameAm || 'ያልተገለጸ ስም',
+              fullNameEn: d.fullNameEn || d.fullNameAm || d.nameEn || 'Unnamed Student',
               phone: d.phone || '',
               gender: d.gender === 'female' ? 'female' : 'male',
               department: d.department || 'education',
@@ -146,7 +147,7 @@ export default function App() {
                 relation: d.emergencyRelation || 'ቤተሰብ / Family' 
               },
               subcity: d.subcity || d.address || '',
-              status: isApproved ? 'active' : d.status === 'rejected' ? 'rejected' : 'pending_approval',
+              status: isApproved ? 'active' : (isRejected ? 'rejected' : 'pending_approval'),
               telegramId: d.telegramId || '',
               telegramUsername: d.telegramUsername || '',
               approvedBy: d.approvedBy,
