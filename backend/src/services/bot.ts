@@ -393,7 +393,6 @@ export async function handleTelegramUpdate(update: any) {
   if (!chatId || !telegramId) return;
 
   // Save subscriber details silently without overwriting active session
-  const activeSess = userSessions.get(telegramId);
   db.collection('bot_subscribers').doc(String(telegramId)).set({
     telegramId: String(telegramId),
     chatId: String(chatId),
@@ -401,7 +400,6 @@ export async function handleTelegramUpdate(update: any) {
     firstName: msg.from?.first_name || '',
     lastName: msg.from?.last_name || '',
     lastActiveAt: new Date().toISOString(),
-    ...(activeSess ? { session: activeSess } : {})
   }, { merge: true }).catch(() => {});
 
   // /start command

@@ -493,6 +493,9 @@ export class CollectionQuery {
       async get() {
         const colLocal = getCollectionLocal(colName);
         let item = colLocal[id] ? normalizeDoc(id, colLocal[id]) : null;
+        if (item && (item.status === 'deleted' || item.data?.status === 'deleted')) {
+          item = null;
+        }
 
         if (supabaseClient && !item) {
           try {
@@ -503,8 +506,12 @@ export class CollectionQuery {
               .single();
             if (!error && data) {
               item = normalizeDoc(id, data);
-              colLocal[id] = item;
-              saveLocalStore(localStore);
+              if (item.status === 'deleted' || item.data?.status === 'deleted') {
+                item = null;
+              } else {
+                colLocal[id] = item;
+                saveLocalStore(localStore);
+              }
             }
           } catch (err: any) {
             console.warn(`Supabase doc get notice for ${colName}/${id}:`, err?.message || err);
