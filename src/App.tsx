@@ -1095,9 +1095,8 @@ export default function App() {
               <span>{nav.label}</span>
               {nav.count !== undefined && nav.count > 0 && (
                 <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 ${
-                  activeTab === nav.id ? 'bg-slate-950 text-amber-500' : 'bg-rose-500 text-white animate-pulse shadow-md shadow-rose-500/30'
+                  activeTab === nav.id ? 'bg-slate-950 text-amber-500' : 'bg-rose-500 text-white shadow-md shadow-rose-500/30'
                 }`}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
                   {nav.count}
                 </span>
               )}
@@ -1172,7 +1171,7 @@ export default function App() {
                   <span className="whitespace-nowrap">{tab.mobileLabel || tab.label}</span>
                   {tab.count !== undefined && tab.count > 0 && (
                     <span className={`px-1.5 py-0.5 rounded-lg text-[9px] font-black shadow-inner ${
-                      activeTab === tab.id ? 'bg-slate-950 text-amber-400' : 'bg-rose-600 text-white animate-pulse'
+                      activeTab === tab.id ? 'bg-slate-950 text-amber-400' : 'bg-rose-600 text-white'
                     }`}>
                       {tab.count}
                     </span>
