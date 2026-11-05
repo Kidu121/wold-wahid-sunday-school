@@ -235,62 +235,54 @@ export async function setSession(telegramId: number, session: UserSession | null
 // Helper to look up student registration / profile flexibly across collections
 export async function findUserRegistrationOrStudent(telegramId: number, username?: string): Promise<{ type: 'student' | 'registration'; data: any } | null> {
   const tgStr = String(telegramId);
+  const allCandidates: Array<{ type: 'student' | 'registration'; data: any }> = [];
 
-  // 1. Fast targeted search in students collection
+  const matchesUser = (data: any) => {
+    if (!data || data.status === 'deleted') return false;
+    const dTg = String(data.telegramId || data.telegram_id || data.tgId || '');
+    const dUser = String(data.telegramUsername || data.telegram_username || '').toLowerCase();
+    return (dTg && dTg === tgStr) || (username && dUser && dUser === username.toLowerCase());
+  };
+
+  // 1. Search students collection
   try {
-    const snap = await db.collection('students').where('telegramId', '==', tgStr).get();
+    const snap = await db.collection('students').get();
     for (const d of snap.docs) {
       const data = d.data();
-      if (data && data.status !== 'deleted') {
-        return { type: 'student', data };
-      }
-    }
-    if (username) {
-      const uSnap = await db.collection('students').where('telegramUsername', '==', username).get();
-      for (const d of uSnap.docs) {
-        const data = d.data();
-        if (data && data.status !== 'deleted') {
-          return { type: 'student', data };
-        }
+      if (matchesUser(data)) {
+        allCandidates.push({ type: 'student', data });
       }
     }
   } catch (e) {
     console.warn('Notice querying students collection:', e);
   }
 
-  // 2. Fast targeted search in registrations collection
+  // 2. Search registrations collection
   try {
-    const matching: any[] = [];
-    const snap = await db.collection('registrations').where('telegramId', '==', tgStr).get();
+    const snap = await db.collection('registrations').get();
     for (const d of snap.docs) {
       const data = d.data();
-      if (!data || data.status === 'deleted') continue;
-      matching.push(data);
-    }
-
-    if (username) {
-      const uSnap = await db.collection('registrations').where('telegramUsername', '==', username).get();
-      for (const d of uSnap.docs) {
-        const data = d.data();
-        if (!data || data.status === 'deleted') continue;
-        if (!matching.some((m) => m.id === data.id)) {
-          matching.push(data);
-        }
+      if (matchesUser(data)) {
+        allCandidates.push({ type: 'registration', data });
       }
-    }
-
-    if (matching.length > 0) {
-      // Prioritize the latest submitted registration so status accurately reflects recent admin decisions
-      matching.sort((a, b) => {
-        const timeA = new Date(a.submittedAt || a.submitted_at || a.createdAt || 0).getTime();
-        const timeB = new Date(b.submittedAt || b.submitted_at || b.createdAt || 0).getTime();
-        return timeB - timeA;
-      });
-
-      return { type: 'registration', data: matching[0] };
     }
   } catch (e) {
     console.warn('Notice querying registrations collection:', e);
+  }
+
+  if (allCandidates.length > 0) {
+    allCandidates.sort((a, b) => {
+      const statusWeight: Record<string, number> = { active: 3, approved: 3, pending: 2, pending_approval: 2, rejected: 1 };
+      const weightA = statusWeight[a.data.status] || 0;
+      const weightB = statusWeight[b.data.status] || 0;
+      if (weightA !== weightB) return weightB - weightA; // Approved/active first, then pending, then rejected
+
+      const timeA = new Date(a.data.submittedAt || a.data.submitted_at || a.data.createdAt || 0).getTime();
+      const timeB = new Date(b.data.submittedAt || b.data.submitted_at || b.data.createdAt || 0).getTime();
+      return timeB - timeA; // Newest first
+    });
+
+    return allCandidates[0];
   }
 
   return null;
@@ -302,40 +294,51 @@ export async function findStudentOrRegistrationByPhone(phoneInput: string): Prom
   const digits9 = cleanPhone.replace(/\D/g, '').slice(-9);
   if (!digits9 || digits9.length < 9) return null;
 
-  // Search students
+  const allCandidates: Array<{ type: 'student' | 'registration'; data: any }> = [];
+
+  const matchesPhone = (data: any) => {
+    if (!data || data.status === 'deleted') return false;
+    const p = String(data.phone || '').replace(/\D/g, '').slice(-9);
+    return p && p === digits9;
+  };
+
   try {
-    const snap = await db.collection('students').where('phone', '==', cleanPhone).get();
+    const snap = await db.collection('students').get();
     for (const d of snap.docs) {
       const data = d.data();
-      if (data && data.status !== 'deleted') {
-        return { type: 'student', data };
+      if (matchesPhone(data)) {
+        allCandidates.push({ type: 'student', data });
       }
     }
   } catch (e) {
     console.warn('Notice searching student by phone:', e);
   }
 
-  // Search registrations
   try {
-    const snap = await db.collection('registrations').where('phone', '==', cleanPhone).get();
-    const matching: any[] = [];
+    const snap = await db.collection('registrations').get();
     for (const d of snap.docs) {
       const data = d.data();
-      if (!data || data.status === 'deleted') continue;
-      matching.push(data);
-    }
-
-    if (matching.length > 0) {
-      matching.sort((a, b) => {
-        const timeA = new Date(a.submittedAt || a.submitted_at || a.createdAt || 0).getTime();
-        const timeB = new Date(b.submittedAt || b.submitted_at || b.createdAt || 0).getTime();
-        return timeB - timeA;
-      });
-
-      return { type: 'registration', data: matching[0] };
+      if (matchesPhone(data)) {
+        allCandidates.push({ type: 'registration', data });
+      }
     }
   } catch (e) {
     console.warn('Notice searching registration by phone:', e);
+  }
+
+  if (allCandidates.length > 0) {
+    allCandidates.sort((a, b) => {
+      const statusWeight: Record<string, number> = { active: 3, approved: 3, pending: 2, pending_approval: 2, rejected: 1 };
+      const weightA = statusWeight[a.data.status] || 0;
+      const weightB = statusWeight[b.data.status] || 0;
+      if (weightA !== weightB) return weightB - weightA;
+
+      const timeA = new Date(a.data.submittedAt || a.data.submitted_at || a.data.createdAt || 0).getTime();
+      const timeB = new Date(b.data.submittedAt || b.data.submitted_at || b.data.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
+
+    return allCandidates[0];
   }
 
   return null;
