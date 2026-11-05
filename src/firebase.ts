@@ -354,71 +354,60 @@ export async function getDocs(q: any): Promise<QuerySnapshot> {
       }
     }
 
-    const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-      setTimeout(() => reject(new Error('getDocs query timeout')), 3500)
-    );
+    let data: any = null;
+    let error: any = null;
 
-    const { data, error } = await Promise.race([
-      queryBuilder,
-      timeoutPromise
-    ]);
-    if (error) {
-      console.warn(`Supabase getDocs notice for ${colName}, retrying full fetch:`, error.message);
-      const { data: allData } = await supabase.from(colName).select('*').limit(100);
-      if (allData) {
-        const items = allData.map((item: any) => normalizeDoc(item.id, item));
-        setLocalCache(colName, items);
-        const docs: QueryDocumentSnapshot[] = items.map((norm: any) => ({
-          id: norm.id,
-          exists: () => true,
-          data: () => norm,
-        }));
-        return {
-          docs,
-          empty: docs.length === 0,
-          size: docs.length,
-          docChanges: () => docs.map((d) => ({ type: 'added', doc: d })),
-        };
-      }
-      throw error;
+    try {
+      const res = await Promise.race([
+        queryBuilder,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+      ]);
+      data = (res as any)?.data;
+      error = (res as any)?.error;
+    } catch (raceErr: any) {
+      error = raceErr;
     }
 
-    const items = (data || [])
-      .map((item: any) => normalizeDoc(item.id, item))
-      .filter((item: any) => item && item.status !== 'deleted');
-    setLocalCache(colName, items);
+    if (!error && data) {
+      const items = data
+        .map((item: any) => normalizeDoc(item.id, item))
+        .filter((item: any) => item && item.status !== 'deleted');
+      setLocalCache(colName, items);
 
-    const docs: QueryDocumentSnapshot[] = items.map((norm: any) => ({
-      id: norm.id || String(norm.student_id || Math.random()),
-      exists: () => true,
-      data: () => norm,
-    }));
-
-    return {
-      docs,
-      empty: docs.length === 0,
-      size: docs.length,
-      docChanges: () => docs.map((d) => ({ type: 'added', doc: d })),
-    };
-  } catch (err: any) {
-    console.warn(`Supabase getDocs notice for ${colName}, serving from local cache:`, err?.message || err);
-    const cached = getLocalCache(colName);
-    const docs: QueryDocumentSnapshot[] = cached.map((item: any) => {
-      const norm = normalizeDoc(item.id, item);
-      return {
-        id: norm.id || `doc_${Math.random()}`,
+      const docs: QueryDocumentSnapshot[] = items.map((norm: any) => ({
+        id: norm.id || String(norm.student_id || Math.random()),
         exists: () => true,
         data: () => norm,
-      };
-    });
+      }));
 
-    return {
-      docs,
-      empty: docs.length === 0,
-      size: docs.length,
-      docChanges: () => docs.map((d) => ({ type: 'added', doc: d })),
-    };
+      return {
+        docs,
+        empty: docs.length === 0,
+        size: docs.length,
+        docChanges: () => docs.map((d) => ({ type: 'added', doc: d })),
+      };
+    }
+  } catch (outerErr) {
+    console.debug('Notice fetching remote docs:', outerErr);
   }
+
+  // Serve from local cache silently on network/timeout errors
+  const cached = getLocalCache(colName);
+  const docs: QueryDocumentSnapshot[] = cached.map((item: any) => {
+    const norm = normalizeDoc(item.id, item);
+    return {
+      id: norm.id || `doc_${Math.random()}`,
+      exists: () => true,
+      data: () => norm,
+    };
+  });
+
+  return {
+    docs,
+    empty: docs.length === 0,
+    size: docs.length,
+    docChanges: () => docs.map((d) => ({ type: 'added', doc: d })),
+  };
 }
 
 export async function getDoc(docRef: any): Promise<QueryDocumentSnapshot> {

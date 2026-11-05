@@ -348,10 +348,10 @@ export class CollectionQuery {
       docsMap.set(docId, normalizeDoc(docId, docData));
     });
 
-    // 2. Query Supabase with resilient 5-second timeout
+    // 2. Query Supabase with resilient timeout
     if (supabaseClient) {
       try {
-        let query = supabaseClient.from(this.colName).select('*').abortSignal(AbortSignal.timeout(5000));
+        let query = supabaseClient.from(this.colName).select('*').abortSignal(AbortSignal.timeout(3000));
         
         for (const c of this.constraints) {
           if (c.type === 'where') {
@@ -375,7 +375,6 @@ export class CollectionQuery {
 
         const { data, error } = await query;
         if (!error && data) {
-          const remoteIds = new Set<string>();
           data.forEach((row: any) => {
             const id = String(row.id || row._id || '');
             if (!id) return;
@@ -384,35 +383,13 @@ export class CollectionQuery {
               delete colLocal[id];
               return;
             }
-            remoteIds.add(id);
             const norm = normalizeDoc(id, row);
             docsMap.set(id, norm);
             colLocal[id] = norm;
           });
           saveLocalStore(localStore);
-        } else if (error) {
-          console.warn(`Supabase query notice for ${this.colName}:`, error.message);
-          // If query with mapped column failed, retry select all to avoid blocking
-          const { data: allData } = await supabaseClient.from(this.colName).select('*').limit(100);
-          if (allData) {
-            allData.forEach((row: any) => {
-              const id = String(row.id || row._id || '');
-              if (!id) return;
-              if (row.status === 'deleted' || row.data?.status === 'deleted') {
-                docsMap.delete(id);
-                delete colLocal[id];
-                return;
-              }
-              const norm = normalizeDoc(id, row);
-              docsMap.set(id, norm);
-              colLocal[id] = norm;
-            });
-            saveLocalStore(localStore);
-          }
         }
-      } catch (sbErr: any) {
-        console.warn(`Notice querying Supabase table '${this.colName}':`, sbErr?.message || sbErr);
-      }
+      } catch {}
     }
 
     // 3. Filter results locally according to constraints
