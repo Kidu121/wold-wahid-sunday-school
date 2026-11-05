@@ -335,10 +335,10 @@ export class CollectionQuery {
       docsMap.set(docId, normalizeDoc(docId, docData));
     });
 
-    // 2. Query Supabase
+    // 2. Query Supabase with resilient 5-second timeout
     if (supabaseClient) {
       try {
-        let query = supabaseClient.from(this.colName).select('*');
+        let query = supabaseClient.from(this.colName).select('*').abortSignal(AbortSignal.timeout(5000));
         
         for (const c of this.constraints) {
           if (c.type === 'where') {

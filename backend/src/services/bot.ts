@@ -236,38 +236,46 @@ export async function setSession(telegramId: number, session: UserSession | null
 export async function findUserRegistrationOrStudent(telegramId: number, username?: string): Promise<{ type: 'student' | 'registration'; data: any } | null> {
   const tgStr = String(telegramId);
 
-  // 1. Search in students collection
+  // 1. Fast targeted search in students collection
   try {
-    const snap = await db.collection('students').get();
+    const snap = await db.collection('students').where('telegramId', '==', tgStr).get();
     for (const d of snap.docs) {
       const data = d.data();
-      if (
-        String(data.telegramId) === tgStr ||
-        String(data.telegram_id) === tgStr ||
-        String(data.tgId) === tgStr ||
-        (username && data.telegramUsername && String(data.telegramUsername).toLowerCase() === username.toLowerCase())
-      ) {
+      if (data && data.status !== 'deleted') {
         return { type: 'student', data };
+      }
+    }
+    if (username) {
+      const uSnap = await db.collection('students').where('telegramUsername', '==', username).get();
+      for (const d of uSnap.docs) {
+        const data = d.data();
+        if (data && data.status !== 'deleted') {
+          return { type: 'student', data };
+        }
       }
     }
   } catch (e) {
     console.warn('Notice querying students collection:', e);
   }
 
-  // 2. Search in registrations collection and prioritize newest / pending / approved
+  // 2. Fast targeted search in registrations collection
   try {
-    const snap = await db.collection('registrations').get();
     const matching: any[] = [];
+    const snap = await db.collection('registrations').where('telegramId', '==', tgStr).get();
     for (const d of snap.docs) {
       const data = d.data();
       if (!data || data.status === 'deleted') continue;
-      if (
-        String(data.telegramId) === tgStr ||
-        String(data.telegram_id) === tgStr ||
-        String(data.tgId) === tgStr ||
-        (username && data.telegramUsername && String(data.telegramUsername).toLowerCase() === username.toLowerCase())
-      ) {
-        matching.push(data);
+      matching.push(data);
+    }
+
+    if (username) {
+      const uSnap = await db.collection('registrations').where('telegramUsername', '==', username).get();
+      for (const d of uSnap.docs) {
+        const data = d.data();
+        if (!data || data.status === 'deleted') continue;
+        if (!matching.some((m) => m.id === data.id)) {
+          matching.push(data);
+        }
       }
     }
 
@@ -296,11 +304,10 @@ export async function findStudentOrRegistrationByPhone(phoneInput: string): Prom
 
   // Search students
   try {
-    const snap = await db.collection('students').get();
+    const snap = await db.collection('students').where('phone', '==', cleanPhone).get();
     for (const d of snap.docs) {
       const data = d.data();
-      const pDigits = String(data.phone || '').replace(/\D/g, '').slice(-9);
-      if (pDigits === digits9) {
+      if (data && data.status !== 'deleted') {
         return { type: 'student', data };
       }
     }
@@ -310,25 +317,18 @@ export async function findStudentOrRegistrationByPhone(phoneInput: string): Prom
 
   // Search registrations
   try {
-    const snap = await db.collection('registrations').get();
+    const snap = await db.collection('registrations').where('phone', '==', cleanPhone).get();
     const matching: any[] = [];
     for (const d of snap.docs) {
       const data = d.data();
-      const pDigits = String(data.phone || '').replace(/\D/g, '').slice(-9);
-      if (pDigits === digits9) {
-        matching.push(data);
-      }
+      if (!data || data.status === 'deleted') continue;
+      matching.push(data);
     }
 
     if (matching.length > 0) {
       matching.sort((a, b) => {
-        const statusWeight: Record<string, number> = { approved: 3, active: 3, pending: 2, pending_approval: 2, rejected: 1 };
-        const weightA = statusWeight[a.status] || 0;
-        const weightB = statusWeight[b.status] || 0;
-        if (weightA !== weightB) return weightB - weightA;
-
-        const timeA = new Date(a.submittedAt || a.submitted_at || 0).getTime();
-        const timeB = new Date(b.submittedAt || b.submitted_at || 0).getTime();
+        const timeA = new Date(a.submittedAt || a.submitted_at || a.createdAt || 0).getTime();
+        const timeB = new Date(b.submittedAt || b.submitted_at || b.createdAt || 0).getTime();
         return timeB - timeA;
       });
 
@@ -563,12 +563,9 @@ export async function handleTelegramUpdate(update: any) {
 
         try {
           // Clean up any previous registration for this user so only the new submission remains
-          const prevDocs = await db.collection('registrations').get();
+          const prevDocs = await db.collection('registrations').where('telegramId', '==', String(telegramId)).get();
           for (const pd of prevDocs.docs) {
-            const pData = pd.data();
-            if (String(pData.telegramId) === String(telegramId) || String(pData.telegram_id) === String(telegramId)) {
-              await db.collection('registrations').doc(pd.id).delete().catch(() => {});
-            }
+            await db.collection('registrations').doc(pd.id).delete().catch(() => {});
           }
 
           await db.collection('registrations').add({
@@ -579,8 +576,14 @@ export async function handleTelegramUpdate(update: any) {
             birthDate: session.data.birthDate,
             phone: session.data.phone,
             address: session.data.address,
+            subcity: session.data.address,
             emergencyName: session.data.emergencyName,
             emergencyPhone: session.data.emergencyPhone,
+            emergencyContact: {
+              name: session.data.emergencyName || '',
+              phone: session.data.emergencyPhone || '',
+              relation: 'ቤተሰብ / Family'
+            },
             department: session.data.department,
             photoUrl: session.data.photo && session.data.photo !== 'None' ? session.data.photo : '',
             status: 'pending',
