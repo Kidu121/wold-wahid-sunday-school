@@ -272,14 +272,15 @@ export async function findUserRegistrationOrStudent(telegramId: number, username
 
   if (allCandidates.length > 0) {
     allCandidates.sort((a, b) => {
-      const statusWeight: Record<string, number> = { active: 3, approved: 3, pending: 2, pending_approval: 2, rejected: 1 };
-      const weightA = statusWeight[a.data.status] || 0;
-      const weightB = statusWeight[b.data.status] || 0;
-      if (weightA !== weightB) return weightB - weightA; // Approved/active first, then pending, then rejected
+      const isApprovedA = a.data.status === 'approved' || a.data.status === 'active';
+      const isApprovedB = b.data.status === 'approved' || b.data.status === 'active';
+      if (isApprovedA && !isApprovedB) return -1;
+      if (!isApprovedA && isApprovedB) return 1;
 
-      const timeA = new Date(a.data.submittedAt || a.data.submitted_at || a.data.createdAt || 0).getTime();
-      const timeB = new Date(b.data.submittedAt || b.data.submitted_at || b.data.createdAt || 0).getTime();
-      return timeB - timeA; // Newest first
+      // Newest submission or decision timestamp takes precedence
+      const timeA = new Date(a.data.rejectedAt || a.data.submittedAt || a.data.submitted_at || a.data.createdAt || 0).getTime();
+      const timeB = new Date(b.data.rejectedAt || b.data.submittedAt || b.data.submitted_at || b.data.createdAt || 0).getTime();
+      return timeB - timeA;
     });
 
     return allCandidates[0];
@@ -328,13 +329,13 @@ export async function findStudentOrRegistrationByPhone(phoneInput: string): Prom
 
   if (allCandidates.length > 0) {
     allCandidates.sort((a, b) => {
-      const statusWeight: Record<string, number> = { active: 3, approved: 3, pending: 2, pending_approval: 2, rejected: 1 };
-      const weightA = statusWeight[a.data.status] || 0;
-      const weightB = statusWeight[b.data.status] || 0;
-      if (weightA !== weightB) return weightB - weightA;
+      const isApprovedA = a.data.status === 'approved' || a.data.status === 'active';
+      const isApprovedB = b.data.status === 'approved' || b.data.status === 'active';
+      if (isApprovedA && !isApprovedB) return -1;
+      if (!isApprovedA && isApprovedB) return 1;
 
-      const timeA = new Date(a.data.submittedAt || a.data.submitted_at || a.data.createdAt || 0).getTime();
-      const timeB = new Date(b.data.submittedAt || b.data.submitted_at || b.data.createdAt || 0).getTime();
+      const timeA = new Date(a.data.rejectedAt || a.data.submittedAt || a.data.submitted_at || a.data.createdAt || 0).getTime();
+      const timeB = new Date(b.data.rejectedAt || b.data.submittedAt || b.data.submitted_at || b.data.createdAt || 0).getTime();
       return timeB - timeA;
     });
 

@@ -375,9 +375,16 @@ export class CollectionQuery {
 
         const { data, error } = await query;
         if (!error && data) {
+          const remoteIds = new Set<string>();
           data.forEach((row: any) => {
-            if (row.status === 'deleted' || row.data?.status === 'deleted') return;
-            const id = String(row.id || row._id || `row_${Math.random()}`);
+            const id = String(row.id || row._id || '');
+            if (!id) return;
+            if (row.status === 'deleted' || row.data?.status === 'deleted') {
+              docsMap.delete(id);
+              delete colLocal[id];
+              return;
+            }
+            remoteIds.add(id);
             const norm = normalizeDoc(id, row);
             docsMap.set(id, norm);
             colLocal[id] = norm;
@@ -389,8 +396,13 @@ export class CollectionQuery {
           const { data: allData } = await supabaseClient.from(this.colName).select('*').limit(100);
           if (allData) {
             allData.forEach((row: any) => {
-              if (row.status === 'deleted' || row.data?.status === 'deleted') return;
-              const id = String(row.id || row._id || `row_${Math.random()}`);
+              const id = String(row.id || row._id || '');
+              if (!id) return;
+              if (row.status === 'deleted' || row.data?.status === 'deleted') {
+                docsMap.delete(id);
+                delete colLocal[id];
+                return;
+              }
               const norm = normalizeDoc(id, row);
               docsMap.set(id, norm);
               colLocal[id] = norm;

@@ -32,36 +32,78 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onOpenStudentPort
     setIsLoading(true);
 
     try {
-      const adminsRef = collection(db, 'admins');
-      const inputDigits = cleanPhone.replace(/\D/g, '').slice(-9);
-      
-      // Try common phone formats in Ethiopia
-      const phoneFormats = [cleanPhone, '0' + inputDigits, '+251' + inputDigits, '251' + inputDigits, inputDigits];
-      const q = query(adminsRef, where('phone', 'in', phoneFormats));
-      const snapshot = await getDocs(q);
+      // Strategy 1: Try server endpoint /api/admins/login with 3.5s timeout
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3500);
+        const apiRes = await fetch('/api/admins/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: cleanPhone, password: cleanPass }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
 
-      let matchedAdmin: any = null;
-      if (!snapshot.empty) {
-        matchedAdmin = {
-          id: snapshot.docs[0].id,
-          ...snapshot.docs[0].data(),
-        };
-      } else {
-        // Fallback: check all admin records in case format has spaces/hyphens
-        const allAdminsSnap = await getDocs(query(adminsRef, limit(50)));
-        if (allAdminsSnap.empty) {
-          setError('በዳታቤዝ ውስጥ የተመዘገበ አስተዳዳሪ አልተገኘም (No admin accounts found in Supabase database)');
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          if (apiData.success && apiData.admin) {
+            onLogin({
+              id: apiData.admin.id,
+              nameAm: apiData.admin.nameAm || 'አስተዳዳሪ',
+              nameEn: apiData.admin.nameEn || 'Admin',
+              phone: apiData.admin.phone || cleanPhone,
+              role: apiData.admin.role === 'super_admin' ? 'super_admin' : 'admin',
+              permissions: apiData.admin.permissions,
+            });
+            setIsLoading(false);
+            return;
+          }
+        } else if (apiRes.status === 401 || apiRes.status === 403) {
+          const errData = await apiRes.json().catch(() => ({}));
+          setError(errData.error || 'የተሳሳተ የይለፍ ቃል (Incorrect password)');
           setIsLoading(false);
           return;
         }
+      } catch (apiErr) {
+        console.warn('API login check fallback to client DB:', apiErr);
+      }
 
-        for (const doc of allAdminsSnap.docs) {
-          const adm = doc.data();
-          const pDigits = String(adm.phone || '').replace(/\D/g, '').slice(-9);
-          if (pDigits && pDigits === inputDigits) {
-            matchedAdmin = { id: doc.id, ...adm };
-            break;
+      // Strategy 2: Client-side DB check in admins collection
+      const adminsRef = collection(db, 'admins');
+      let matchedAdmin: any = null;
+
+      try {
+        const allAdminsSnap = await getDocs(query(adminsRef, limit(50)));
+        if (!allAdminsSnap.empty) {
+          for (const docSnap of allAdminsSnap.docs) {
+            const adm = docSnap.data();
+            const pDigits = String(adm.phone || '').replace(/\D/g, '').slice(-9);
+            if (pDigits && pDigits === inputDigits) {
+              matchedAdmin = { id: docSnap.id, ...adm };
+              break;
+            }
           }
+        }
+      } catch (clientErr) {
+        console.warn('Client admins query notice:', clientErr);
+      }
+
+      // Strategy 3: Check students collection for admin or super_admin role
+      if (!matchedAdmin) {
+        try {
+          const studSnap = await getDocs(query(collection(db, 'students'), limit(100)));
+          if (!studSnap.empty) {
+            for (const docSnap of studSnap.docs) {
+              const std = docSnap.data();
+              const pDigits = String(std.phone || '').replace(/\D/g, '').slice(-9);
+              if (pDigits && pDigits === inputDigits && (std.role === 'admin' || std.role === 'super_admin')) {
+                matchedAdmin = { id: docSnap.id, ...std };
+                break;
+              }
+            }
+          }
+        } catch (studErr) {
+          console.warn('Client students admin check notice:', studErr);
         }
       }
 
@@ -78,7 +120,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onOpenStudentPort
         return;
       }
 
-      // Password verification with database record - STRICT DATABASE MATCH ONLY
+      // Password verification with database record - STRICT MATCH ONLY
       const dbPassword = String(matchedAdmin.password || matchedAdmin.data?.password || '').trim();
       const isPasswordMatch = cleanPass === dbPassword;
 
@@ -88,11 +130,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onOpenStudentPort
         return;
       }
 
-      // Successful login from database
+      // Successful login
       onLogin({
         id: matchedAdmin.id,
-        nameAm: matchedAdmin.nameAm || matchedAdmin.name_am || 'አስተዳዳሪ',
-        nameEn: matchedAdmin.nameEn || matchedAdmin.name_en || 'Admin',
+        nameAm: matchedAdmin.fullNameAm || matchedAdmin.nameAm || matchedAdmin.name_am || 'አስተዳዳሪ',
+        nameEn: matchedAdmin.fullNameEn || matchedAdmin.nameEn || matchedAdmin.name_en || 'Admin',
         phone: matchedAdmin.phone || cleanPhone,
         role: matchedAdmin.role === 'super_admin' ? 'super_admin' : 'admin',
         permissions: matchedAdmin.permissions,

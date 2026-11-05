@@ -354,7 +354,14 @@ export async function getDocs(q: any): Promise<QuerySnapshot> {
       }
     }
 
-    const { data, error } = await queryBuilder;
+    const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+      setTimeout(() => reject(new Error('getDocs query timeout')), 3500)
+    );
+
+    const { data, error } = await Promise.race([
+      queryBuilder,
+      timeoutPromise
+    ]);
     if (error) {
       console.warn(`Supabase getDocs notice for ${colName}, retrying full fetch:`, error.message);
       const { data: allData } = await supabase.from(colName).select('*').limit(100);
