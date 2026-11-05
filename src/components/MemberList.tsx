@@ -106,11 +106,14 @@ export const MemberList: React.FC<MemberListProps> = ({
       : rejectedMembers;
 
   const displayedMembers = currentTabMembers.filter((m) => {
+    const cleanSearch = searchTerm.replace(/\D/g, '');
+    const cleanMemberPhone = (m.phone || '').replace(/\D/g, '');
     const matchesSearch =
       m.fullNameAm.toLowerCase().includes(searchTerm.toLowerCase()) ||
       m.fullNameEn.toLowerCase().includes(searchTerm.toLowerCase()) ||
       m.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.phone.includes(searchTerm);
+      m.phone.includes(searchTerm) ||
+      (cleanSearch.length >= 3 && cleanMemberPhone.includes(cleanSearch));
 
     const matchesDept =
       selectedDept === 'all' ||
