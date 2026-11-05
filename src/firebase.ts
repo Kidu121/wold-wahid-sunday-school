@@ -489,14 +489,26 @@ export async function updateDoc(docRef: any, data: any): Promise<void> {
   if (!id) return;
 
   const cached = getLocalCache(colName);
-  const existingIdx = cached.findIndex((item) => item.id === id);
-  const merged = existingIdx >= 0 ? { ...cached[existingIdx], ...data } : { ...data, id };
+  let existing = cached.find((item) => item.id === id);
+  if (!existing) {
+    try {
+      const { data: remoteData } = await supabase.from(colName).select('*').eq('id', id).maybeSingle();
+      if (remoteData) {
+        existing = normalizeDoc(id, remoteData);
+      }
+    } catch {}
+  }
+
+  const merged = existing ? { ...existing, ...data } : { ...data, id };
   const norm = normalizeDoc(id, merged);
 
+  const existingIdx = cached.findIndex((item) => item.id === id);
   if (existingIdx >= 0) {
     cached[existingIdx] = norm;
-    setLocalCache(colName, cached);
+  } else {
+    cached.push(norm);
   }
+  setLocalCache(colName, cached);
 
   try {
     const row = buildSupabaseRow(colName, id, norm);
