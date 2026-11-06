@@ -16,6 +16,49 @@ export interface UserSession {
 
 export const userSessions = new Map<number, UserSession>();
 
+// Dedicated in-memory session helper - never wiped by external DB timeouts
+export async function getSession(telegramId: number): Promise<UserSession | null> {
+  if (userSessions.has(telegramId)) {
+    return userSessions.get(telegramId)!;
+  }
+  try {
+    const docSnap = await Promise.race([
+      db.collection('bot_subscribers').doc(String(telegramId)).get(),
+      new Promise<any>((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+    ]);
+    if (docSnap && docSnap.exists) {
+      const data = docSnap.data();
+      const sess = data?.session || data?.data?.session;
+      if (sess && sess.action && sess.step) {
+        userSessions.set(telegramId, sess);
+        return sess;
+      }
+    }
+  } catch (err) {
+    // Graceful fallback to memory
+  }
+  return null;
+}
+
+export async function setSession(telegramId: number, session: UserSession | null) {
+  if (session) {
+    userSessions.set(telegramId, session);
+  } else {
+    userSessions.delete(telegramId);
+  }
+  // Asynchronously sync to database without blocking
+  (async () => {
+    try {
+      await db.collection('bot_subscribers').doc(String(telegramId)).set({
+        session: session || null,
+        lastActiveAt: new Date().toISOString(),
+      }, { merge: true });
+    } catch (err) {
+      // In-memory session guarantees continuity even when remote DB is down/restricted
+    }
+  })();
+}
+
 export const mainMenuKeyboard = {
   reply_markup: {
     keyboard: [
@@ -195,42 +238,7 @@ export async function dispatchSendMessage(chatId: number | string, text: string,
   }
 }
 
-// Session helper syncs to local map and database
-export async function getSession(telegramId: number): Promise<UserSession | null> {
-  if (userSessions.has(telegramId)) {
-    return userSessions.get(telegramId)!;
-  }
-  try {
-    const docSnap = await db.collection('bot_subscribers').doc(String(telegramId)).get();
-    if (docSnap.exists) {
-      const data = docSnap.data();
-      const sess = data?.session || data?.data?.session;
-      if (sess && sess.action && sess.step) {
-        userSessions.set(telegramId, sess);
-        return sess;
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to fetch session from db:', err);
-  }
-  return null;
-}
 
-export async function setSession(telegramId: number, session: UserSession | null) {
-  if (session) {
-    userSessions.set(telegramId, session);
-  } else {
-    userSessions.delete(telegramId);
-  }
-  try {
-    await db.collection('bot_subscribers').doc(String(telegramId)).set({
-      session: session || null,
-      lastActiveAt: new Date().toISOString(),
-    }, { merge: true });
-  } catch (err) {
-    console.warn('Failed to sync session to db:', err);
-  }
-}
 
 // Helper to look up student registration / profile flexibly across collections
 export async function findUserRegistrationOrStudent(telegramId: number, username?: string): Promise<{ type: 'student' | 'registration'; data: any } | null> {
@@ -550,14 +558,36 @@ export async function handleTelegramUpdate(update: any) {
         await setSession(telegramId, session);
         await dispatchSendMessage(
           chatId,
-          '📸 *የመገለጫ ፎቶ ሊንክ ወይም ፎቶ ይላኩ (Step 10/10):*\nPlease send your profile photo or photo link:\n(ወይንም "None" ብለው መጻፍ ይችላሉ)',
+          '📸 *የመገለጫ ፎቶ ወይም ሊንክ ይላኩ (Step 10/10):*\nPlease send your profile photo (Maximum 2MB) or link:\n(ወይንም "None" ብለው መጻፍ ይችላሉ)',
           cancelKeyboard
         );
       } else if (session.step === 'photo') {
         let photoVal = text;
+        if (msg.photo && Array.isArray(msg.photo) && msg.photo.length > 0) {
+          // Check file size for 2MB limit (2 * 1024 * 1024 = 2,097,152 bytes)
+          const highestPhoto = msg.photo[msg.photo.length - 1];
+          if (highestPhoto.file_size && highestPhoto.file_size > 2 * 1024 * 1024) {
+            await dispatchSendMessage(
+              chatId,
+              '⚠️ *የፎቶው መጠን ከ 2MB ይበልጣል! (Photo exceeds 2MB limit)*\nእባክዎ መጠኑ ከ 2MB በታች የሆነ ፎቶ ይላኩ ወይም "None" ይበሉ፦',
+              cancelKeyboard
+            );
+            return;
+          }
+          photoFileId = highestPhoto.file_id;
+        }
+
         if (photoFileId) {
           try {
             const fileInfo = await botInstance.getFile(photoFileId);
+            if (fileInfo?.file_size && fileInfo.file_size > 2 * 1024 * 1024) {
+              await dispatchSendMessage(
+                chatId,
+                '⚠️ *የፎቶው መጠን ከ 2MB ይበልጣል! (Photo exceeds 2MB limit)*\nእባክዎ መጠኑ ከ 2MB በታች የሆነ ፎቶ ይላኩ ወይም "None" ይበሉ፦',
+                cancelKeyboard
+              );
+              return;
+            }
             if (fileInfo?.file_path) {
               photoVal = `https://api.telegram.org/file/bot${token}/${fileInfo.file_path}`;
             } else {

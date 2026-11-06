@@ -739,6 +739,11 @@ Leave Request Submitted!
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) {
+                                if (file.size > 2 * 1024 * 1024) {
+                                  alert('የመረጡት ፎቶ መጠን ከ 2MB ይበልጣል! እባክዎ ከ 2MB በታች የሆነ ፎቶ ይምረጡ። (Photo exceeds 2MB limit)');
+                                  e.target.value = '';
+                                  return;
+                                }
                                 const reader = new FileReader();
                                 reader.onloadend = () => setRegPhotoUrl(reader.result as string);
                                 reader.readAsDataURL(file);

@@ -223,6 +223,11 @@ export const MemberList: React.FC<MemberListProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert('የመረጡት ፎቶ መጠን ከ 2MB ይበልጣል! እባክዎ ከ 2MB በታች የሆነ ፎቶ ይምረጡ። (Photo exceeds 2MB limit)');
+        e.target.value = '';
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         setSelectedPhoto(reader.result as string);
@@ -1083,6 +1088,11 @@ export const MemberList: React.FC<MemberListProps> = ({
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
+                            if (file.size > 2 * 1024 * 1024) {
+                              alert('የመረጡት ፎቶ መጠን ከ 2MB ይበልጣል! እባክዎ ከ 2MB በታች የሆነ ፎቶ ይምረጡ። (Photo exceeds 2MB limit)');
+                              e.target.value = '';
+                              return;
+                            }
                             const reader = new FileReader();
                             reader.onloadend = () => {
                               setEditingMember({ ...editingMember, photoUrl: reader.result as string });
