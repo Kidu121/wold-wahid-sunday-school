@@ -172,6 +172,99 @@ async function startServer() {
     }
   });
 
+  // ─── COLLECTION LIST ROUTES (used by web app onSnapshot polling) ───
+
+  // List all registrations
+  app.get('/api/registrations', async (req, res) => {
+    try {
+      const snap = await db.collection('registrations').get();
+      const items = snap.docs
+        .map((d: any) => ({ id: d.id, ...d.data() }))
+        .filter((d: any) => d.status !== 'deleted');
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch registrations' });
+    }
+  });
+
+  // List all students
+  app.get('/api/students', async (req, res) => {
+    try {
+      const snap = await db.collection('students').get();
+      const items = snap.docs
+        .map((d: any) => ({ id: d.id, ...d.data() }))
+        .filter((d: any) => d.status !== 'deleted');
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch students' });
+    }
+  });
+
+  // List all support tickets
+  app.get('/api/support_tickets', async (req, res) => {
+    try {
+      const snap = await db.collection('support_tickets').get();
+      const items = snap.docs
+        .map((d: any) => ({ id: d.id, ...d.data() }))
+        .filter((d: any) => d.status !== 'deleted');
+      items.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch support tickets' });
+    }
+  });
+
+  // List all leave requests
+  app.get('/api/leave_requests', async (req, res) => {
+    try {
+      const snap = await db.collection('leave_requests').get();
+      const items = snap.docs
+        .map((d: any) => ({ id: d.id, ...d.data() }))
+        .filter((d: any) => d.status !== 'deleted');
+      items.sort((a: any, b: any) => new Date(b.submittedAt || b.createdAt || 0).getTime() - new Date(a.submittedAt || a.createdAt || 0).getTime());
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch leave requests' });
+    }
+  });
+
+  // List all admins
+  app.get('/api/admins', async (req, res) => {
+    try {
+      const snap = await db.collection('admins').get();
+      const items = snap.docs
+        .map((d: any) => ({ id: d.id, ...d.data() }))
+        .filter((d: any) => d.status !== 'deleted');
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch admins' });
+    }
+  });
+
+  // List recent notifications
+  app.get('/api/notifications', async (req, res) => {
+    try {
+      const snap = await db.collection('notifications').get();
+      const items = snap.docs
+        .map((d: any) => ({ id: d.id, ...d.data() }));
+      items.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      res.json(items.slice(0, 50));
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+  });
+
+  // List bot subscribers
+  app.get('/api/bot_subscribers', async (req, res) => {
+    try {
+      const snap = await db.collection('bot_subscribers').get();
+      const items = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch bot subscribers' });
+    }
+  });
+
   // Telegram Webhook Endpoint
   app.post('/api/telegram/webhook', async (req, res) => {
     try {
@@ -1023,8 +1116,49 @@ async function startServer() {
     }
   }, 4 * 60 * 1000); // 4 minutes (well below Render's 15 min sleep cutoff)
   
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🚀 Full-stack server running on http://0.0.0.0:${PORT}`);
+
+    // Register Telegram webhook on startup (webhook-only mode — no polling)
+    const tgToken = process.env.TELEGRAM_BOT_TOKEN || '8611581813:AAHadIUrYIkmVzz90WfvcpTduj-ubCZCL8w';
+    const appUrl = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL || '';
+    if (tgToken && !tgToken.startsWith('YOUR_') && !tgToken.startsWith('PASTE_') && appUrl) {
+      try {
+        const webhookUrl = `${appUrl.replace(/\/$/, '')}/api/telegram/webhook`;
+        // Delete any existing webhook first to clear polling conflicts
+        await fetch(`https://api.telegram.org/bot${tgToken}/deleteWebhook?drop_pending_updates=false`);
+        const webhookRes = await fetch(`https://api.telegram.org/bot${tgToken}/setWebhook`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: webhookUrl,
+            allowed_updates: ['message', 'edited_message', 'callback_query'],
+          }),
+        });
+        const webhookData: any = await webhookRes.json();
+        if (webhookData.ok) {
+          console.log(`🤖 Telegram webhook registered: ${webhookUrl}`);
+        } else {
+          console.warn('⚠️ Telegram webhook registration notice:', webhookData.description);
+          // If webhook registration fails (e.g. no public URL in dev), fall back to polling
+          const { startPolling } = await import('./backend/src/services/bot.js');
+          startPolling().catch((err: any) => console.error('Polling fallback error:', err));
+        }
+      } catch (webhookErr: any) {
+        console.warn('⚠️ Telegram webhook setup error, falling back to polling:', webhookErr?.message);
+        try {
+          const { startPolling } = await import('./backend/src/services/bot.js');
+          startPolling().catch((err: any) => console.error('Polling fallback error:', err));
+        } catch {}
+      }
+    } else if (tgToken && !tgToken.startsWith('YOUR_') && !tgToken.startsWith('PASTE_')) {
+      // No public URL (local dev) — use polling
+      console.log('🤖 No public APP_URL set — using long-polling mode for local dev.');
+      try {
+        const { startPolling } = await import('./backend/src/services/bot.js');
+        startPolling().catch((err: any) => console.error('Failed to start polling:', err));
+      } catch {}
+    }
   });
 }
 

@@ -334,7 +334,7 @@ export async function getDocs(q: any): Promise<QuerySnapshot> {
   // Strategy 1: Try fast server endpoint /api/<colName>
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2500);
+    const timer = setTimeout(() => controller.abort(), 5000);
     const apiRes = await fetch(`/api/${colName}`, { signal: controller.signal });
     clearTimeout(timer);
     if (apiRes.ok) {
@@ -393,7 +393,7 @@ export async function getDocs(q: any): Promise<QuerySnapshot> {
     try {
       const res = await Promise.race([
         queryBuilder,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000))
       ]);
       data = (res as any)?.data;
       error = (res as any)?.error;
@@ -593,7 +593,10 @@ export function onSnapshot(refOrQuery: any, callback: (snapshot: any) => void, _
     getDocs(refOrQuery).then(callback).catch(() => {});
   }
 
+  let isPolling = false;
   const interval = setInterval(async () => {
+    if (isPolling) return; // skip if previous poll is still running
+    isPolling = true;
     try {
       if (isDoc) {
         const docSnap = await getDoc(refOrQuery);
@@ -603,7 +606,10 @@ export function onSnapshot(refOrQuery: any, callback: (snapshot: any) => void, _
         callback(querySnap);
       }
     } catch {}
-  }, 3000);
+    finally {
+      isPolling = false;
+    }
+  }, 20000);
 
   return () => clearInterval(interval);
 }

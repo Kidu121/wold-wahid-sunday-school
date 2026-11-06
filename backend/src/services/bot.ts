@@ -1,4 +1,4 @@
-import { db } from './supabase';
+import { db, supabase } from './supabase';
 import { formatEthiopianDate } from '../utils/ethiopianCalendar';
 import QRCode from 'qrcode';
 import * as dotenv from 'dotenv';
@@ -392,15 +392,21 @@ export async function handleTelegramUpdate(update: any) {
 
   if (!chatId || !telegramId) return;
 
-  // Save subscriber details silently without overwriting active session
-  db.collection('bot_subscribers').doc(String(telegramId)).set({
-    telegramId: String(telegramId),
-    chatId: String(chatId),
-    username: username,
-    firstName: msg.from?.first_name || '',
-    lastName: msg.from?.last_name || '',
-    lastActiveAt: new Date().toISOString(),
-  }, { merge: true }).catch(() => {});
+  // Save subscriber details WITHOUT touching active wizard session
+  (async () => {
+    try {
+      const tgIdStr = String(telegramId);
+      await supabase.from('bot_subscribers').upsert({
+        id: tgIdStr,
+        telegram_id: tgIdStr,
+        chat_id: String(chatId),
+        username: username,
+        first_name: msg.from?.first_name || '',
+        last_name: msg.from?.last_name || '',
+        last_active_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+    } catch {}
+  })();
 
   // /start command
   if (text.startsWith('/start')) {
@@ -1279,7 +1285,4 @@ export function getBot() {
   return botInstance;
 }
 
-// Start polling on startup
-if (token && !token.startsWith('PASTE_')) {
-  startPolling().catch((err) => console.error('Failed to start Telegram polling:', err));
-}
+
